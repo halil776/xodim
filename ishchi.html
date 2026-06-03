@@ -224,9 +224,11 @@ tr.r-red td{background:var(--red-bg)}
 <script>
 // Ishchi state
 let dk = JSON.parse(localStorage.getItem('iw_dk')||'[]');       // bosh dokon ro'yxati (boshliqdan)
-let tl = JSON.parse(localStorage.getItem('iw_tl')||'[]');       // arenda to'lovlari
+let tl = JSON.parse(localStorage.getItem('iw_tl')||'[]');       // XODIM o'zi kiritgan arenda to'lovlari
 let el = JSON.parse(localStorage.getItem('iw_el')||'[]');       // elektr hisoblagich (counter)
-let elt= JSON.parse(localStorage.getItem('iw_elt')||'[]');      // elektr to'lovlari (do'kon to'lagan)
+let elt= JSON.parse(localStorage.getItem('iw_elt')||'[]');      // XODIM kiritgan elektr to'lovlari
+let bossTl = JSON.parse(localStorage.getItem('iw_btl')||'[]');  // boshliq kiritgan to'lovlar (faqat ko'rish, qarz hisobi)
+let bossElt= JSON.parse(localStorage.getItem('iw_belt')||'[]'); // boshliq kiritgan elektr to'lovlar
 let workerName = localStorage.getItem('iw_name')||'';
 
 function save(){
@@ -234,7 +236,20 @@ function save(){
   localStorage.setItem('iw_tl',JSON.stringify(tl));
   localStorage.setItem('iw_el',JSON.stringify(el));
   localStorage.setItem('iw_elt',JSON.stringify(elt));
+  localStorage.setItem('iw_btl',JSON.stringify(bossTl));
+  localStorage.setItem('iw_belt',JSON.stringify(bossElt));
   localStorage.setItem('iw_name',workerName);
+}
+// Do'konning bu oygi JAMI to'langani (boshliq + xodim) — qarzni to'g'ri ko'rsatish uchun
+function allTlMonth(dkId){
+  const w=tl.filter(t=>t.dk===dkId&&t.oy===tm()).reduce((s,t)=>s+Number(t.sm),0);
+  const b=bossTl.filter(t=>t.dk===dkId&&t.oy===tm()).reduce((s,t)=>s+Number(t.sm),0);
+  return w+b;
+}
+function allEltAll(dkId){
+  const w=elt.filter(t=>t.dk===dkId).reduce((s,t)=>s+Number(t.sm),0);
+  const b=bossElt.filter(t=>t.dk===dkId).reduce((s,t)=>s+Number(t.sm),0);
+  return w+b;
 }
 
 const f = n => Number(n||0).toLocaleString('uz-UZ')+' so\'m';
@@ -267,20 +282,25 @@ function loadDokon(event){
         tl=data.tl||[];
         el=data.el||[];
         elt=data.elt||[];
+        bossTl=data.bossTl||[];
+        bossElt=data.bossElt||[];
         workerName=data._worker;
         document.getElementById('setupName').value=workerName;
       } else {
-        // Boshliqdan kelgan do'kon fayli (yangi do'konlar bo'lishi mumkin)
+        // Boshliqdan kelgan do'kon fayli
         const yangiDk=data.dk||data.dokonlar||[];
         const eskiTlBor = tl.length>0 || elt.length>0;
         dk=yangiDk;
+        // Boshliqning to'lovlari — qarzni to'g'ri ko'rsatish uchun (xodim bularni o'zgartirmaydi)
+        bossTl=data.tl||[];
+        bossElt=data.elt||[];
         if(!eskiTlBor){ tl=[]; elt=[]; }
         if(name) workerName=name;
         // elektr: yangi do'konlar uchun joriy ko'rsatkich tayyorla
         dk.filter(d=>d.elekt).forEach(d=>{
           if(!el.find(e=>e.dkId===d.id)){
             const bossEl=(data.el||[]).find(e=>e.dkId===d.id);
-            el.push({dkId:d.id,oldingi:bossEl?Number(bossEl.joriy):0,joriy:bossEl?Number(bossEl.joriy):0});
+            el.push({dkId:d.id,oldingi:bossEl?Number(bossEl.oldingi):0,joriy:bossEl?Number(bossEl.joriy):0});
           }
         });
       }
@@ -327,7 +347,7 @@ window.addEventListener('click',e=>{ if(e.target.classList.contains('overlay')) 
 
 // Do'kon bu oy to'landi (faqat shu ishchi kiritgan + agar boshliq fayl bilan kelgan bo'lsa)
 function paidThisMonth(dkId){
-  return tl.filter(t=>t.dk===dkId&&t.oy===tm()).reduce((s,t)=>s+Number(t.sm),0);
+  return allTlMonth(dkId);
 }
 
 function renderDk(){
@@ -342,7 +362,8 @@ function renderDk(){
     if(paid===0){badge='<span class="badge b-red">To\'lamagan</span>';pc='prog-r';rc='r-red';}
     else if(paid>=oylik){badge='<span class="badge b-green">To\'liq ✓</span>';pc='prog-g';rc='r-green';}
     else{badge='<span class="badge b-yellow">Qisman '+Math.round(pct)+'%</span>';pc='prog-y';rc='r-yellow';}
-    const hist=tl.filter(t=>t.dk===d.id&&t.oy===tm());
+    // tarix: boshliq + xodim to'lovlari birga
+    const hist=[...bossTl.filter(t=>t.dk===d.id&&t.oy===tm()),...tl.filter(t=>t.dk===d.id&&t.oy===tm())];
     const histHtml=hist.length?'<div class="tl-hist">'+hist.map(t=>`<span>📅 ${fd(t.sn)}: <b>${f(t.sm)}</b></span>`).join('')+'</div>':'';
     return `<tr class="${rc}">
       <td style="color:var(--muted);font-weight:700">${i+1}</td>
@@ -362,7 +383,7 @@ function tlPrev(){
   const oy=document.getElementById('tl-oy')?.value||tm();
   if(!dkId) return;
   const d=dk.find(x=>x.id===dkId); if(!d) return;
-  const paid=tl.filter(t=>t.dk===dkId&&t.oy===oy).reduce((s,t)=>s+Number(t.sm),0);
+  const paid=allTlMonth(dkId);
   const qoldi=Math.max(0,Number(d.oylik)-paid);
   document.getElementById('tlPrev').innerHTML=`📊 ${d.nom} · ${oy}: <b style="color:var(--green)">${f(paid)}</b> to'langan — <b style="color:${qoldi>0?'var(--red)':'var(--green)'}">${qoldi>0?f(qoldi)+' qoldi':'To\'liq ✓'}</b>`;
 }
@@ -406,8 +427,8 @@ function renderElekt(){
     const e=el.find(e=>e.dkId===d.id)||{oldingi:0,joriy:0};
     const diff=Math.max(0,Number(e.joriy)-Number(e.oldingi));
     const pul=diff*tarif;
-    // bu oy shu do'kon elektr to'lagan
-    const tolagan=elt.filter(t=>t.dk===d.id&&t.oy===tm()).reduce((s,t)=>s+Number(t.sm),0);
+    // bu do'kon elektr to'lagan (boshliq + xodim)
+    const tolagan=allEltAll(d.id);
     const qoldi=Math.max(0,pul-tolagan);
     let badge;
     if(pul===0) badge='<span class="badge b-blue">Hisoblanmagan</span>';
@@ -440,7 +461,7 @@ function payElekt(dkId){
   const e=el.find(e=>e.dkId===dkId)||{oldingi:0,joriy:0};
   const tarif=Number(document.getElementById('tarif').value)||1000;
   const pul=Math.max(0,Number(e.joriy)-Number(e.oldingi))*tarif;
-  const tolagan=elt.filter(t=>t.dk===dkId&&t.oy===tm()).reduce((s,t)=>s+Number(t.sm),0);
+  const tolagan=allEltAll(dkId);
   const qoldi=Math.max(0,pul-tolagan);
   const summa=prompt(`${d.nom} — elektr to'lovi\n\nHisoblangan: ${f(pul)}\nTo'langan: ${f(tolagan)}\nQoldi: ${f(qoldi)}\n\nDo'kon qancha to'ladi? (so'm)`, qoldi||'');
   if(summa===null) return;
@@ -452,7 +473,7 @@ function payElekt(dkId){
 
 // EXPORT — boshliqqa yuborish uchun
 function exportWork(){
-  const data={_worker:workerName,dk,tl,el,elt,exported:new Date().toISOString()};
+  const data={_worker:workerName,dk,tl,el,elt,bossTl,bossElt,exported:new Date().toISOString()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
